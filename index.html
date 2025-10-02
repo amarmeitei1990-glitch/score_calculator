@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Score Calculator</title>
+  <style>
+    :root{
+      --card-bg: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,249,255,0.94));
+      --accent1: #7b2ff7;
+      --accent2: #00d4ff;
+      --muted: #6b7280;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:linear-gradient(135deg,#ffd1c4 0%,#f8c4ff 25%,#d7f0ff 65%,#cfe8ff 100%);-webkit-font-smoothing:antialiased}
+    body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(35% 35% at 6% 12%, rgba(255,255,255,0.16), transparent 10%), radial-gradient(30% 30% at 92% 86%, rgba(0,0,0,0.03), transparent 18%);mix-blend-mode: overlay;animation: floatBG 14s ease-in-out infinite;z-index:0}
+    @keyframes floatBG{0%{transform:translateY(0)}50%{transform:translateY(-10px)}100%{transform:translateY(0)}}
+
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:48px 18px;box-sizing:border-box;z-index:1;position:relative}
+    .card{width:min(1180px,96%);border-radius:16px;padding:44px 52px;background:var(--card-bg);box-shadow:0 30px 70px rgba(22,22,60,0.12), 0 8px 22px rgba(22,22,60,0.06);border:1px solid rgba(255,255,255,0.6);position:relative;overflow:hidden;transition:transform .28s cubic-bezier(.2,.9,.2,1)}
+    .card:hover{transform:translateY(-8px)}
+    .card::after{content:"";position:absolute;inset:-40%;background:conic-gradient(from 160deg, rgba(123,47,247,0.12), rgba(0,212,255,0.10), rgba(255,123,214,0.06));filter:blur(36px);transform:rotate(10deg);animation:spin 20s linear infinite;pointer-events:none;opacity:0.95}
+    @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+    h1{margin:0 0 26px 0;font-size:34px;text-align:center;color:#07102a;letter-spacing:0.2px}
+    .heading-underline{height:6px;width:180px;margin:14px auto 0;border-radius:999px;background:linear-gradient(90deg,var(--accent1),var(--accent2));box-shadow:0 8px 18px rgba(123,47,247,0.12);transform-origin:center;animation:underlineFloat 3s ease-in-out infinite}
+    @keyframes underlineFloat{0%{transform:translateY(0)}50%{transform:translateY(-6px)}100%{transform:translateY(0)}}
+
+    .months{display:grid;grid-template-columns:1fr 1fr;gap:18px 30px;margin-bottom:22px}
+    .month{display:flex;flex-direction:column;gap:8px}
+    .label{font-size:13px;color:#2f2f36;font-weight:700}
+
+    /* TEXT input (allows decimal dot reliably) */
+    input.score-input{
+      height:50px;border-radius:12px;border:1px solid rgba(22,22,60,0.06);padding:12px 16px;font-size:16px;background:linear-gradient(180deg, rgba(255,255,255,0.86), rgba(245,246,255,0.86));
+      outline:none;box-shadow: 0 12px 26px rgba(20,20,60,0.04);transition: box-shadow .18s ease, transform .12s ease, border-color .12s ease;
+    }
+    input.score-input:focus{box-shadow: 0 20px 48px rgba(123,47,247,0.12);transform: translateY(-4px);border-color: rgba(123,47,247,0.6)}
+
+    .result{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:10px}
+    .big{font-size:48px;font-weight:800;color:#07102a;letter-spacing:1px;animation:popIn .36s ease}
+    @keyframes popIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+    .sub{color:var(--muted);font-size:14px}
+
+    .controls{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:20px}
+    .btn{padding:12px 22px;border-radius:12px;font-weight:700;border:0;cursor:pointer;min-width:120px;box-shadow:0 10px 28px rgba(20,20,60,0.06);transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease}
+    .btn:active{transform:translateY(2px)}
+    .btn-clear{background:linear-gradient(180deg,rgba(255,255,255,0.9),rgba(245,246,255,0.9));color:#0b1020;border:1px solid rgba(20,20,60,0.04)}
+
+    @media (max-width:820px){ .months{grid-template-columns:1fr} .card{padding:28px} h1{font-size:24px} .big{font-size:36px} }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="main">
+    <div class="card" aria-live="polite">
+      <h1>Score Calculator</h1>
+      <div class="heading-underline" aria-hidden="true"></div>
+
+      <form id="calcForm" autocomplete="off" onsubmit="return false;">
+        <div class="months" id="monthsGrid"></div>
+
+        <div class="result" aria-hidden="false">
+          <div class="big" id="avgDisplay">— / 100</div>
+          <div class="sub" id="countDisplay">0 months included • —%</div>
+
+          <div class="controls">
+            <button type="button" class="btn btn-clear" id="clearBtn" title="Clear all months">Clear</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Months
+    const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    const monthsGrid = document.getElementById('monthsGrid');
+
+    // Helper sanitize function: allow digits and at most one dot, up to 3 decimals, strip negatives
+    function sanitizeNumericText(v) {
+      if (!v) return '';
+      // convert comma to dot
+      v = v.replace(',', '.');
+      // remove everything except digits and dot
+      v = v.replace(/[^\d.]/g, '');
+      // if multiple dots, keep first only
+      const firstDotIndex = v.indexOf('.');
+      if (firstDotIndex !== -1) {
+        // keep integer part and up to 3 decimal chars
+        const intPart = v.slice(0, firstDotIndex) || '0';
+        const dec = v.slice(firstDotIndex + 1).replace(/\./g, '').slice(0, 3);
+        v = intPart + (dec ? '.' + dec : '');
+      }
+      // remove leading zeros except "0" or "0.xxx"
+      if (/^0[0-9]/.test(v) && !/^0\./.test(v)) {
+        v = v.replace(/^0+/, '') || '0';
+      }
+      // strip leading '-' if any
+      if (v.startsWith('-')) v = v.slice(1);
+      // limit integer length to 9 digits for UI sanity
+      const [intPart, decPart] = v.split('.');
+      if (intPart && intPart.length > 9) {
+        v = intPart.slice(-9) + (decPart ? '.' + decPart : '');
+      }
+      return v;
+    }
+
+    // Build inputs (use type=text to ensure decimal dot works on all browsers)
+    months.forEach((m, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'month';
+
+      const label = document.createElement('label');
+      label.className = 'label';
+      label.htmlFor = 'month-' + idx;
+      label.textContent = m;
+
+      const input = document.createElement('input');
+      input.type = 'text';                 // text ensures dot entry works everywhere
+      input.className = 'score-input';
+      input.id = 'month-' + idx;
+      input.inputMode = 'decimal';         // mobile decimal keyboard
+      input.placeholder = ''; 
+      input.setAttribute('aria-label', m + ' score');
+
+      // Allow common editing keys and prevent typing letters; but we rely on sanitize on input/paste
+      input.addEventListener('keydown', (e) => {
+        const allowed = ['Backspace','Tab','Enter','Delete','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+        if (allowed.includes(e.key)) return;
+        if (e.ctrlKey || e.metaKey) return; // allow shortcuts
+        // allow digits and dot and comma and minus (we'll strip negatives later)
+        if (/[\d\.,\-]/.test(e.key)) return;
+        e.preventDefault();
+      });
+
+      // On input (typing or paste) sanitize value and recalc
+      input.addEventListener('input', (e) => {
+        const sanitized = sanitizeNumericText(e.target.value);
+        if (e.target.value !== sanitized) {
+          const pos = e.target.selectionStart || 0;
+          e.target.value = sanitized;
+          try { e.target.setSelectionRange(pos, pos); } catch (err) { /* ignore */ }
+        }
+        recalc();
+      });
+
+      // Also sanitize on blur (final check)
+      input.addEventListener('blur', (e) => {
+        e.target.value = sanitizeNumericText(e.target.value);
+        recalc();
+      });
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(input);
+      monthsGrid.appendChild(wrapper);
+    });
+
+    // Result elements
+    const avgDisplay = document.getElementById('avgDisplay');
+    const countDisplay = document.getElementById('countDisplay');
+    const clearBtn = document.getElementById('clearBtn');
+
+    // Format up to 3 decimals, trimming trailing zeros
+    function formatNumberTrim(n) {
+      const rounded = Math.round(n * 1000) / 1000;
+      let s = String(rounded);
+      if (s.indexOf('.') >= 0) s = s.replace(/\.?0+$/, '');
+      return s;
+    }
+
+    // Recalc average
+    function recalc() {
+      const inputs = Array.from(document.querySelectorAll('input.score-input'));
+      let sum = 0, count = 0;
+      inputs.forEach(inp => {
+        const raw = inp.value.trim();
+        if (raw === '') return;
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return;
+        if (n < 0) return;
+        sum += n;
+        count++;
+      });
+
+      if (count === 0) {
+        avgDisplay.textContent = '— / 100';
+        countDisplay.textContent = '0 months included • —%';
+      } else {
+        const avg = sum / count;
+        const avgText = formatNumberTrim(avg);
+        avgDisplay.textContent = `${avgText} / 100`;
+        countDisplay.textContent = `${count} month${count>1?'s':''} included • ${avgText}%`;
+        // small pop animation
+        avgDisplay.style.transform = 'translateY(-6px)';
+        setTimeout(()=> avgDisplay.style.transform = '', 220);
+      }
+    }
+
+    // Clear button
+    clearBtn.addEventListener('click', () => {
+      document.querySelectorAll('input.score-input').forEach(i => i.value = '');
+      recalc();
+      clearBtn.style.transform = 'scale(0.98)';
+      setTimeout(()=> clearBtn.style.transform = '', 160);
+    });
+
+    // Initialize
+    recalc();
+  </script>
+</body>
+</html>
